@@ -41,27 +41,15 @@ func (v resourceVersion) GetChartURL() string                  { return v.chartU
 func (v resourceVersion) GetChartPullSecret() string           { return v.chartPullSecret }
 func (v resourceVersion) GetHelmValues() *apiextensionsv1.JSON { return v.helmValues }
 
-// OCIRepositoryOptions configures the OCIRepository managed for a chart.
-type OCIRepositoryOptions struct {
-	Name     string
-	MutateFn func(*sourcev1.OCIRepositorySpec) error
-}
-
-// HelmReleaseOptions configures the HelmRelease managed for a chart.
-type HelmReleaseOptions struct {
-	Name     string
-	MutateFn func(*helmv2.HelmReleaseSpec) error
-}
-
 // ResourceConfig configures the Flux resources for a Helm chart.
 type ResourceConfig struct {
-	Cluster       objectmanager.Cluster
-	Namespace     string
-	Interval      time.Duration
-	KubeConfig    *meta.KubeConfigReference
-	Version       ResourceVersion
-	OCIRepository OCIRepositoryOptions
-	HelmRelease   HelmReleaseOptions
+	Cluster           objectmanager.Cluster
+	Namespace         string
+	Interval          time.Duration
+	KubeConfig        *meta.KubeConfigReference
+	Version           ResourceVersion
+	OCIRepositoryName string
+	HelmReleaseName   string
 }
 
 // ManageResources registers an OCIRepository and dependent HelmRelease on a cluster.
@@ -91,11 +79,11 @@ func validateConfig(config ResourceConfig) error {
 	if config.KubeConfig == nil || config.KubeConfig.SecretRef == nil || config.KubeConfig.SecretRef.Name == "" || config.KubeConfig.SecretRef.Key == "" {
 		return fmt.Errorf("ResourceConfig.KubeConfig must reference a secret name and key")
 	}
-	if config.OCIRepository.Name == "" {
-		return fmt.Errorf("ResourceConfig.OCIRepository.Name must not be empty")
+	if config.OCIRepositoryName == "" {
+		return fmt.Errorf("ResourceConfig.OCIRepositoryName must not be empty")
 	}
-	if config.HelmRelease.Name == "" {
-		return fmt.Errorf("ResourceConfig.HelmRelease.Name must not be empty")
+	if config.HelmReleaseName == "" {
+		return fmt.Errorf("ResourceConfig.HelmReleaseName must not be empty")
 	}
 	if config.Namespace == "" {
 		return fmt.Errorf("ResourceConfig.Namespace must not be empty")
@@ -105,7 +93,7 @@ func validateConfig(config ResourceConfig) error {
 
 func newOCIRepository(config ResourceConfig) objectmanager.Object {
 	return objectmanager.NewObject(&sourcev1.OCIRepository{
-		ObjectMeta: metav1.ObjectMeta{Name: config.OCIRepository.Name, Namespace: config.Cluster.GetDefaultNamespace()},
+		ObjectMeta: metav1.ObjectMeta{Name: config.OCIRepositoryName, Namespace: config.Cluster.GetDefaultNamespace()},
 	}, objectmanager.ObjectConfig{
 		ReconcileFunc: func(_ context.Context, object client.Object) error {
 			ociRepository, ok := object.(*sourcev1.OCIRepository)
@@ -113,17 +101,13 @@ func newOCIRepository(config ResourceConfig) objectmanager.Object {
 				return fmt.Errorf("expected *sourcev1.OCIRepository, got %T", object)
 			}
 			spec := sourcev1.OCIRepositorySpec{
-				Interval: metav1.Duration{Duration: config.Interval}, URL: config.Version.GetChartURL(),
+				Interval:      metav1.Duration{Duration: config.Interval},
+				URL:           config.Version.GetChartURL(),
 				Reference:     &sourcev1.OCIRepositoryRef{Tag: config.Version.GetChartVersion()},
 				LayerSelector: &sourcev1.OCILayerSelector{MediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip", Operation: "extract"},
 			}
 			if secret := config.Version.GetChartPullSecret(); secret != "" {
 				spec.SecretRef = &meta.LocalObjectReference{Name: secret}
-			}
-			if config.OCIRepository.MutateFn != nil {
-				if err := config.OCIRepository.MutateFn(&spec); err != nil {
-					return fmt.Errorf("mutate OCIRepository spec: %w", err)
-				}
 			}
 			ociRepository.Spec = spec
 			return nil
@@ -134,28 +118,28 @@ func newOCIRepository(config ResourceConfig) objectmanager.Object {
 
 func newHelmRelease(config ResourceConfig, dependencies []objectmanager.Object) objectmanager.Object {
 	return objectmanager.NewObject(&helmv2.HelmRelease{
-		ObjectMeta: metav1.ObjectMeta{Name: config.HelmRelease.Name, Namespace: config.Cluster.GetDefaultNamespace()},
+		ObjectMeta: metav1.ObjectMeta{Name: config.HelmReleaseName, Namespace: config.Cluster.GetDefaultNamespace()},
 	}, objectmanager.ObjectConfig{
 		ReconcileFunc: func(_ context.Context, object client.Object) error {
 			helmRelease, ok := object.(*helmv2.HelmRelease)
 			if !ok {
 				return fmt.Errorf("expected *helmv2.HelmRelease, got %T", object)
 			}
-			spec := helmv2.HelmReleaseSpec{
-				Interval:       metav1.Duration{Duration: config.Interval},
-				ChartRef:       &helmv2.CrossNamespaceSourceReference{Kind: "OCIRepository", Name: config.OCIRepository.Name, Namespace: config.Cluster.GetDefaultNamespace()},
-				KubeConfig:     config.KubeConfig,
-				Install:        &helmv2.Install{Remediation: &helmv2.InstallRemediation{Retries: 3}, CreateNamespace: true},
-				Upgrade:        &helmv2.Upgrade{Remediation: &helmv2.UpgradeRemediation{Retries: 3}},
-				DriftDetection: &helmv2.DriftDetection{Mode: helmv2.DriftDetectionEnabled},
-				Values:         config.Version.GetHelmValues(), TargetNamespace: config.Namespace, StorageNamespace: config.Namespace,
+			helmRelease.Spec = helmv2.HelmReleaseSpec{
+				Interval: metav1.Duration{Duration: config.Interval},
+				ChartRef: &helmv2.CrossNamespaceSourceReference{
+					Kind:      "OCIRepository",
+					Name:      config.OCIRepositoryName,
+					Namespace: config.Cluster.GetDefaultNamespace(),
+				},
+				KubeConfig:       config.KubeConfig,
+				Install:          &helmv2.Install{Remediation: &helmv2.InstallRemediation{Retries: 3}, CreateNamespace: true},
+				Upgrade:          &helmv2.Upgrade{Remediation: &helmv2.UpgradeRemediation{Retries: 3}},
+				DriftDetection:   &helmv2.DriftDetection{Mode: helmv2.DriftDetectionEnabled},
+				Values:           config.Version.GetHelmValues(),
+				TargetNamespace:  config.Namespace,
+				StorageNamespace: config.Namespace,
 			}
-			if config.HelmRelease.MutateFn != nil {
-				if err := config.HelmRelease.MutateFn(&spec); err != nil {
-					return fmt.Errorf("mutate HelmRelease spec: %w", err)
-				}
-			}
-			helmRelease.Spec = spec
 			return nil
 		},
 		DependsOn: dependencies, DeletionPolicy: objectmanager.Delete, StatusFunc: Status,
@@ -166,17 +150,29 @@ func newHelmRelease(config ResourceConfig, dependencies []objectmanager.Object) 
 func Status(object client.Object) objectmanager.ManagedObjectStatus {
 	fluxObject, ok := object.(conditions.Getter)
 	if !ok {
-		return objectmanager.ManagedObjectStatus{Phase: objectmanager.StatusPhaseUnknown, Message: fmt.Sprintf("object %T does not implement conditions.Getter", object)}
+		return objectmanager.ManagedObjectStatus{
+			Phase:   objectmanager.StatusPhaseUnknown,
+			Message: fmt.Sprintf("object %T does not implement conditions.Getter", object),
+		}
 	}
 	if !object.GetDeletionTimestamp().IsZero() {
-		return objectmanager.ManagedObjectStatus{Phase: objectmanager.StatusPhaseTerminating, Message: "Resource is terminating."}
+		return objectmanager.ManagedObjectStatus{
+			Phase:   objectmanager.StatusPhaseTerminating,
+			Message: "Resource is terminating.",
+		}
 	}
 	if conditions.IsTrue(fluxObject, meta.ReadyCondition) {
-		return objectmanager.ManagedObjectStatus{Phase: objectmanager.StatusPhaseReady, Message: "Resource is ready"}
+		return objectmanager.ManagedObjectStatus{
+			Phase:   objectmanager.StatusPhaseReady,
+			Message: "Resource is ready",
+		}
 	}
 	message := "Resource is not ready"
 	if condition := conditions.Get(fluxObject, meta.ReadyCondition); condition != nil && condition.Message != "" {
 		message = condition.Message
 	}
-	return objectmanager.ManagedObjectStatus{Phase: objectmanager.StatusPhaseProgressing, Message: message}
+	return objectmanager.ManagedObjectStatus{
+		Phase:   objectmanager.StatusPhaseProgressing,
+		Message: message,
+	}
 }
