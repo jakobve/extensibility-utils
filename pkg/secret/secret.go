@@ -1,3 +1,4 @@
+// Package secret provides object-manager helpers for copying Kubernetes secrets.
 package secret
 
 import (
@@ -6,71 +7,50 @@ import (
 
 	ctrlutils "github.com/openmcp-project/controller-utils/pkg/controller"
 	openmcpresources "github.com/openmcp-project/controller-utils/pkg/resources"
+	"github.com/openmcp-project/extensibility-utils/pkg/objectmanager"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// SecretCopyConfig holds the configuration for copying a secret.
-type SecretCopyConfig struct {
-	// SourceClient is the client to read the source secret from.
-	SourceClient client.Client
-	// SourceName is the name of the source secret.
-	SourceName string
-	// SourceNamespace is the namespace of the source secret.
+// CopyConfig holds the configuration for copying a secret between clusters or namespaces.
+type CopyConfig struct {
+	SourceClient    client.Client
+	SourceName      string
 	SourceNamespace string
-	// TargetNamespace is the namespace of the target secret.
 	TargetNamespace string
-	// TargetName is the name of the target secret.
-	TargetName string
+	TargetName      string
 }
 
-// ManagePullSecret syncs every image pull secret the to cluster
-func ManagePullSecret(targetCluster ManagedCluster, config SecretCopyConfig) {
-	secret := NewManagedObject(&corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      config.TargetName,
-			Namespace: config.TargetNamespace,
-		},
-	}, ManagedObjectContext{
-		ReconcileFunc: func(ctx context.Context, o client.Object) error {
-			oSecret, ok := o.(*corev1.Secret)
+// ManagePullSecret registers an image-pull secret copy on a target cluster.
+func ManagePullSecret(targetCluster objectmanager.Cluster, config CopyConfig) {
+	targetCluster.AddObject(objectmanager.NewObject(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: config.TargetName, Namespace: config.TargetNamespace},
+	}, objectmanager.ObjectConfig{
+		ReconcileFunc: func(ctx context.Context, object client.Object) error {
+			targetSecret, ok := object.(*corev1.Secret)
 			if !ok {
-				return fmt.Errorf("expected *corev1.Secret, got %T", o)
+				return fmt.Errorf("expected *corev1.Secret, got %T", object)
 			}
-			sourceSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      config.SourceName,
-					Namespace: config.SourceNamespace,
-				},
-			}
-			// retrieve source secret from platform cluster
+			sourceSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: config.SourceName, Namespace: config.SourceNamespace}}
 			if err := config.SourceClient.Get(ctx, client.ObjectKeyFromObject(sourceSecret), sourceSecret); err != nil {
-				return fmt.Errorf("manage pull secret - source secret not found: %w", err)
+				return fmt.Errorf("get source secret: %w", err)
 			}
-			mutator := openmcpresources.NewSecretMutator(config.TargetName, config.TargetNamespace, sourceSecret.Data, corev1.SecretTypeDockerConfigJson)
-			return mutator.Mutate(oSecret)
+			return openmcpresources.NewSecretMutator(config.TargetName, config.TargetNamespace, sourceSecret.Data, corev1.SecretTypeDockerConfigJson).Mutate(targetSecret)
 		},
-		StatusFunc: SimpleStatus,
-	})
-	targetCluster.AddObject(secret)
+		StatusFunc: objectmanager.SimpleStatus,
+	}))
 }
 
-// PrefixSecretName adds the prefix to the given secret name
-// to prevent name collisions in namespaces where multiple service providers operate.
-// If the resulting name exceeds 63 characters (K8s limit), it will be truncated
-// and a hash suffix appended for uniqueness via ShortenToXCharacters.
-func PrefixSecretName(secretName string, prefix string) (string, error) {
-	return ctrlutils.ShortenToXCharacters(fmt.Sprintf("%s%s", prefix, secretName), ctrlutils.K8sMaxNameLength)
+// PrefixName prefixes a secret name and limits it to the Kubernetes name length.
+func PrefixName(name, prefix string) (string, error) {
+	return ctrlutils.ShortenToXCharacters(fmt.Sprintf("%s%s", prefix, name), ctrlutils.K8sMaxNameLength)
 }
 
-// NewSecretCleaner removes redundant pull secrets in the given target namespace
-// by removing any secret labeled as managed by sp-external-secrets that is not in secretsToKeep.
-func NewSecretCleaner(cluster ManagedCluster, serviceProvider string, namespace string, secretsToKeep []corev1.LocalObjectReference) OrphanCleaner {
-	return NewOrphanCleaner(cluster, serviceProvider, namespace, CleanerType[*corev1.SecretList]{
-		EmptyList: func() *corev1.SecretList {
-			return &corev1.SecretList{}
-		},
+// NewCleaner removes managed pull secrets not included in secretsToKeep.
+func NewCleaner(cluster objectmanager.Cluster, serviceProvider, namespace string, secretsToKeep []corev1.LocalObjectReference) objectmanager.Cleaner {
+	return objectmanager.NewCleaner(cluster, serviceProvider, namespace, objectmanager.CleanerConfig[*corev1.SecretList]{
+		EmptyList:     func() *corev1.SecretList { return &corev1.SecretList{} },
 		ObjectsToKeep: secretsToKeep,
 	})
 }

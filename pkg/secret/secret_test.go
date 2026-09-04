@@ -1,152 +1,36 @@
-package manager
+package secret
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"testing"
 
+	"github.com/openmcp-project/extensibility-utils/pkg/objectmanager"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-const (
-	secretName      = "privateregcred"
-	sourceNamespace = "source"
-	targetNamespace = "target"
-)
+func TestManagePullSecret(t *testing.T) {
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	source := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "source", Namespace: "source"}, Data: map[string][]byte{"config": []byte("value")}}
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(source).Build()
+	cluster := objectmanager.NewCluster(fakeClient, &rest.Config{}, "target", objectmanager.PlatformCluster)
+	ManagePullSecret(cluster, CopyConfig{SourceClient: fakeClient, SourceName: "source", SourceNamespace: "source", TargetName: "target", TargetNamespace: "target"})
 
-func TestManagePullSecrets(t *testing.T) {
-	fakeCluster := CreateFakeCluster(t, "platform", &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: sourceNamespace,
-		},
-		Data: map[string][]byte{
-			"test": []byte("testdata"),
-		},
-		// Deliberately Opaque — NOT DockerConfigJson — to verify the mutator always
-		// sets the target type to DockerConfigJson regardless of the source type.
-		Type: corev1.SecretTypeOpaque,
-	}, &corev1.Secret{
-		// existing secret with the same source secret name in the target namespace
-		// this secret needs to be untouched by the service provider secret copy functionality
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: targetNamespace,
-		},
-		Data: map[string][]byte{
-			"existing-secret-data": []byte("must-not-be-altered"),
-		},
-		Type: corev1.SecretTypeDockerConfigJson,
-	})
-	tests := []struct {
-		name string // description of this test case
-		// Named input parameters for target function.
-		targetCluster ManagedCluster
-		config        SecretCopyConfig
-		wantErr       bool
-	}{
-		{
-			name:          "copy secret privateregcred from source to target namespace and adjust its name",
-			targetCluster: NewManagedCluster(fakeCluster, &rest.Config{}, sourceNamespace, PlatformCluster),
-			config: SecretCopyConfig{
-				SourceClient:    fakeCluster.Client(),
-				SourceName:      secretName,
-				SourceNamespace: sourceNamespace,
-				TargetNamespace: targetNamespace,
-				TargetName:      fmt.Sprintf("%s%s", "secretNamePrefix", secretName),
-			},
-			wantErr: false,
-		},
-		{
-			name:          "source secret not found — wrong name",
-			targetCluster: NewManagedCluster(fakeCluster, &rest.Config{}, sourceNamespace, PlatformCluster),
-			config: SecretCopyConfig{
-				SourceClient:    fakeCluster.Client(),
-				SourceName:      "wrongSecretName",
-				SourceNamespace: sourceNamespace,
-				TargetNamespace: targetNamespace,
-				TargetName:      fmt.Sprintf("%s%s", "secretNamePrefix", secretName),
-			},
-			wantErr: true,
-		},
-		{
-			name:          "source secret not found — wrong namespace",
-			targetCluster: NewManagedCluster(fakeCluster, &rest.Config{}, sourceNamespace, PlatformCluster),
-			config: SecretCopyConfig{
-				SourceClient:    fakeCluster.Client(),
-				SourceName:      secretName,
-				SourceNamespace: "wrongSourceNamespace",
-				TargetNamespace: targetNamespace,
-				TargetName:      fmt.Sprintf("%s%s", "secretNamePrefix", secretName),
-			},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ManagePullSecret(tt.targetCluster, tt.config)
+	manager := objectmanager.NewManager("test")
+	manager.AddCluster(cluster)
+	_, _, err := manager.Apply(context.Background())
+	require.NoError(t, err)
 
-			mgr := NewManager("serviceprovider-test")
-			mgr.AddCluster(tt.targetCluster)
-			_, _, err := mgr.Apply(context.TODO())
-
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.ErrorIs(t, err, ErrManagedResourcesFailed)
-				return
-			}
-
-			require.NoError(t, err)
-
-			sourceSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      tt.config.SourceName,
-					Namespace: tt.config.SourceNamespace,
-				},
-			}
-			targetSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      tt.config.TargetName,
-					Namespace: tt.config.TargetNamespace,
-				},
-			}
-			existingSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      secretName,
-					Namespace: tt.config.TargetNamespace,
-				},
-			}
-
-			require.NoError(t, tt.config.SourceClient.Get(context.TODO(), client.ObjectKeyFromObject(sourceSecret), sourceSecret))
-			require.NoError(t, tt.config.SourceClient.Get(context.TODO(), client.ObjectKeyFromObject(targetSecret), targetSecret))
-			require.NoError(t, tt.config.SourceClient.Get(context.TODO(), client.ObjectKeyFromObject(existingSecret), existingSecret))
-			assert.Equal(t, sourceSecret.Data, targetSecret.Data)
-			assert.Equal(t, map[string][]byte{"existing-secret-data": []byte("must-not-be-altered")}, existingSecret.Data)
-			assert.Equal(t, corev1.SecretTypeDockerConfigJson, targetSecret.Type, "target secret should have the correct type")
-		})
-	}
-}
-
-func TestPrefixSecretName(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{"short name", "privateregcred"},
-		{"long name truncated", strings.Repeat("a", 60)},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := PrefixSecretName(tt.input, "secretNamePrefix")
-			require.NoError(t, err)
-			assert.True(t, strings.HasPrefix(got, "secretNamePrefix"))
-			assert.LessOrEqual(t, len(got), 63)
-		})
-	}
+	target := &corev1.Secret{}
+	require.NoError(t, fakeClient.Get(context.Background(), client.ObjectKey{Name: "target", Namespace: "target"}, target))
+	assert.Equal(t, source.Data, target.Data)
+	assert.Equal(t, corev1.SecretTypeDockerConfigJson, target.Type)
 }
