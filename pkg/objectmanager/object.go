@@ -14,6 +14,13 @@ const (
 	Delete DeletionPolicy = "delete"
 )
 
+const (
+	StatusPhaseReady       = "Ready"
+	StatusPhaseProgressing = "Progressing"
+	StatusPhaseTerminating = "Terminating"
+	StatusPhaseUnknown     = "Unknown"
+)
+
 // ReconcileFunc configures an object before it is created or updated.
 type ReconcileFunc func(context.Context, client.Object) error
 
@@ -61,9 +68,6 @@ func NewObject(clientObject client.Object, config ObjectConfig) Object {
 	}
 }
 
-// NoOp does not modify an object.
-func NoOp(context.Context, client.Object) error { return nil }
-
 func (o *object) GetObject() client.Object { return o.object }
 
 func (o *object) Reconcile(ctx context.Context) error {
@@ -83,13 +87,6 @@ func (o *object) GetStatus() ManagedObjectStatus {
 	}
 	return o.statusFunc(o.object)
 }
-
-const (
-	StatusPhaseReady       = "Ready"
-	StatusPhaseProgressing = "Progressing"
-	StatusPhaseTerminating = "Terminating"
-	StatusPhaseUnknown     = "Unknown"
-)
 
 // ManagedObjectStatus describes an object's observed lifecycle state.
 type ManagedObjectStatus struct {
