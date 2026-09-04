@@ -11,7 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -21,7 +20,7 @@ func TestManagePullSecret(t *testing.T) {
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	source := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "source", Namespace: "source"}, Data: map[string][]byte{"config": []byte("value")}}
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(source).Build()
-	cluster := objectmanager.NewCluster(fakeClient, &rest.Config{}, "target", objectmanager.PlatformCluster)
+	cluster := objectmanager.NewCluster(fakeClient, "target", objectmanager.PlatformCluster)
 	ManagePullSecret(cluster, CopyConfig{SourceClient: fakeClient, SourceName: "source", SourceNamespace: "source", TargetName: "target", TargetNamespace: "target"})
 
 	manager := objectmanager.NewManager("test")

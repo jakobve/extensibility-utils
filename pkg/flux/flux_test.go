@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -25,7 +24,7 @@ func fluxTestCluster(t *testing.T) objectmanager.Cluster {
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, sourcev1.AddToScheme(scheme))
 	require.NoError(t, helmv2.AddToScheme(scheme))
-	return objectmanager.NewCluster(fake.NewClientBuilder().WithScheme(scheme).Build(), &rest.Config{}, "flux-system", objectmanager.PlatformCluster)
+	return objectmanager.NewCluster(fake.NewClientBuilder().WithScheme(scheme).Build(), "flux-system", objectmanager.PlatformCluster)
 }
 
 func validConfig(t *testing.T) ResourceConfig {

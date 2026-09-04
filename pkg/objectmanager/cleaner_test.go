@@ -9,7 +9,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -21,7 +20,7 @@ func TestCleanerDeletesUnwantedManagedObjects(t *testing.T) {
 		Name: "obsolete", Namespace: "default", Labels: map[string]string{"app.kubernetes.io/managed-by": "test"},
 	}}
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
-	cluster := NewCluster(fakeClient, &rest.Config{}, "default", PlatformCluster)
+	cluster := NewCluster(fakeClient, "default", PlatformCluster)
 	cleaner := NewCleaner(cluster, "test", "default", CleanerConfig[*corev1.SecretList]{
 		EmptyList: func() *corev1.SecretList { return &corev1.SecretList{} },
 	})

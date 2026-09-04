@@ -11,7 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -19,7 +18,7 @@ func testCluster(t *testing.T, objects ...runtime.Object) Cluster {
 	t.Helper()
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
-	return NewCluster(fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objects...).Build(), &rest.Config{}, "default", PlatformCluster)
+	return NewCluster(fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objects...).Build(), "default", PlatformCluster)
 }
 
 func TestManagerApplyAndDelete(t *testing.T) {
