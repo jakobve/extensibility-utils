@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"slices"
 
 	"github.com/openmcp-project/extensibility-utils/pkg/internal"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -54,11 +53,11 @@ func (m *manager) Apply(ctx context.Context) ([]ManagedObject, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	objects, errs := resultsToManagedObjects(ctx, results)
+	managedObjects, errs := resultsToManagedObjects(ctx, results)
 	if len(errs) > 0 {
-		return objects, false, fmt.Errorf("%w: %w", ErrManagedObjectsFailed, errors.Join(errs...))
+		return managedObjects, false, fmt.Errorf("%w: %w", ErrManagedObjectsFailed, errors.Join(errs...))
 	}
-	return objects, allObjectsReady(results), nil
+	return managedObjects, allObjectsReady(results), nil
 }
 
 func (m *manager) Delete(ctx context.Context) ([]ManagedObject, bool, error) {
@@ -66,11 +65,11 @@ func (m *manager) Delete(ctx context.Context) ([]ManagedObject, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	objects, errs := resultsToManagedObjects(ctx, results)
+	managedObjects, errs := resultsToManagedObjects(ctx, results)
 	if len(errs) > 0 {
-		return objects, false, fmt.Errorf("%w: %w", ErrManagedObjectsFailed, errors.Join(errs...))
+		return managedObjects, false, fmt.Errorf("%w: %w", ErrManagedObjectsFailed, errors.Join(errs...))
 	}
-	return objects, allDeleted(results), nil
+	return managedObjects, allDeleted(results), nil
 }
 
 func (m *manager) reconcileObjects(ctx context.Context, deleting bool) ([]Result, error) {
@@ -86,7 +85,7 @@ func (m *manager) reconcileObjects(ctx context.Context, deleting bool) ([]Result
 		if err != nil {
 			return results, err
 		}
-		results = slices.Concat(results, resultsToAdd)
+		results = append(results, resultsToAdd...)
 	}
 	if len(results) == 0 {
 		log.FromContext(ctx).V(1).Info("object manager reconciled zero objects")
@@ -181,26 +180,30 @@ func allObjectsReady(results []Result) bool {
 
 func resultsToManagedObjects(ctx context.Context, results []Result) ([]ManagedObject, []error) {
 	logger := log.FromContext(ctx)
-	objects := make([]ManagedObject, 0, len(results))
+	managedObjects := make([]ManagedObject, 0, len(results))
 	var errs []error
 	for _, result := range results {
-		object := result.Object.GetObject()
+		clientObject := result.Object.GetObject()
 		apiGroup := ""
-		kind := reflect.TypeOf(object).Elem().Name()
-		if gvk, err := result.Cluster.GetClient().GroupVersionKindFor(object); err == nil {
+		kind := reflect.TypeOf(clientObject).Elem().Name()
+		if gvk, err := result.Cluster.GetClient().GroupVersionKindFor(clientObject); err == nil {
 			apiGroup = gvk.Group
 			kind = gvk.Kind
 		} else {
-			logger.Error(err, "cannot determine GVK for managed object", "objectID", internal.ObjectID(object))
+			logger.Error(err, "cannot determine GVK for managed object", "objectID", internal.ObjectID(clientObject))
 		}
-		objects = append(objects, ManagedObject{
-			APIGroup: apiGroup, Kind: kind, Name: object.GetName(), Namespace: object.GetNamespace(),
-			Location: string(result.Cluster.GetClusterType()), Status: result.Object.GetStatus(),
+		managedObjects = append(managedObjects, ManagedObject{
+			APIGroup: apiGroup, 
+			Kind: kind, 
+			Name: clientObject.GetName(), 
+			Namespace: clientObject.GetNamespace(),
+			Location: string(result.Cluster.GetClusterType()), 
+			Status: result.Object.GetStatus(),
 		})
 		if result.Error != nil {
-			logger.Error(result.Error, "reconcile error", "objectID", internal.ObjectID(object))
+			logger.Error(result.Error, "reconcile error", "objectID", internal.ObjectID(clientObject))
 			errs = append(errs, result.Error)
 		}
 	}
-	return objects, errs
+	return managedObjects, errs
 }

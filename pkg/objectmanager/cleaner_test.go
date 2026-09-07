@@ -16,9 +16,13 @@ import (
 func TestCleanerDeletesUnwantedManagedObjects(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, corev1.AddToScheme(scheme))
-	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
-		Name: "obsolete", Namespace: "default", Labels: map[string]string{"app.kubernetes.io/managed-by": "test"},
-	}}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "obsolete", 
+			Namespace: "default", 
+			Labels: map[string]string{"app.kubernetes.io/managed-by": "test"},
+		},
+	}
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 	cluster := NewCluster(fakeClient, "default", PlatformCluster)
 	cleaner := NewCleaner(cluster, "test", "default", CleanerConfig[*corev1.SecretList]{

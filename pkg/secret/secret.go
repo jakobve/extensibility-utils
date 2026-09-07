@@ -24,22 +24,34 @@ type CopyConfig struct {
 
 // ManagePullSecret registers an image-pull secret copy on a target cluster.
 func ManagePullSecret(targetCluster objectmanager.Cluster, config CopyConfig) {
-	targetCluster.AddObject(objectmanager.NewObject(&corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: config.TargetName, Namespace: config.TargetNamespace},
+	targetCluster.AddObject(createSecret(config))
+}
+
+func createSecret(config CopyConfig) objectmanager.Object {
+	return objectmanager.NewObject(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: config.TargetName, 
+			Namespace: config.TargetNamespace,
+		},
 	}, objectmanager.ObjectConfig{
 		ReconcileFunc: func(ctx context.Context, object client.Object) error {
 			targetSecret, ok := object.(*corev1.Secret)
 			if !ok {
 				return fmt.Errorf("expected *corev1.Secret, got %T", object)
 			}
-			sourceSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: config.SourceName, Namespace: config.SourceNamespace}}
+			sourceSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: config.SourceName, 
+					Namespace: config.SourceNamespace,
+				},
+			}
 			if err := config.SourceClient.Get(ctx, client.ObjectKeyFromObject(sourceSecret), sourceSecret); err != nil {
 				return fmt.Errorf("get source secret: %w", err)
 			}
 			return openmcpresources.NewSecretMutator(config.TargetName, config.TargetNamespace, sourceSecret.Data, corev1.SecretTypeDockerConfigJson).Mutate(targetSecret)
 		},
 		StatusFunc: objectmanager.SimpleStatus,
-	}))
+	})
 }
 
 // PrefixName prefixes a secret name and limits it to the Kubernetes name length.
@@ -49,8 +61,12 @@ func PrefixName(name, prefix string) (string, error) {
 
 // NewCleaner removes managed pull secrets not included in secretsToKeep.
 func NewCleaner(cluster objectmanager.Cluster, serviceProvider, namespace string, secretsToKeep []corev1.LocalObjectReference) objectmanager.Cleaner {
-	return objectmanager.NewCleaner(cluster, serviceProvider, namespace, objectmanager.CleanerConfig[*corev1.SecretList]{
-		EmptyList:     func() *corev1.SecretList { return &corev1.SecretList{} },
-		ObjectsToKeep: secretsToKeep,
+	return objectmanager.NewCleaner(
+		cluster, 
+		serviceProvider, 
+		namespace, 
+		objectmanager.CleanerConfig[*corev1.SecretList]{
+			ObjectsToKeep: secretsToKeep,
+			EmptyList:     func() *corev1.SecretList { return &corev1.SecretList{} },
 	})
 }

@@ -77,9 +77,17 @@ func (c *cleaner[T]) Cleanup(ctx context.Context) ([]Result, error) {
 
 func (c *cleaner[T]) result(object client.Object, operation controllerutil.OperationResult, err error, phase, message string) Result {
 	return Result{
-		Object: NewObject(object, ObjectConfig{DeletionPolicy: Delete, StatusFunc: func(client.Object) ManagedObjectStatus {
-			return ManagedObjectStatus{Phase: phase, Message: message}
-		}}),
-		Cluster: c.cluster, OperationResult: operation, Error: err,
+		Object: NewObject(object, ObjectConfig{
+			DeletionPolicy: Delete, 
+			StatusFunc: func(client.Object) ManagedObjectStatus {
+				return ManagedObjectStatus{
+					Phase: phase, 
+					Message: message,
+				}
+			},
+		}),
+		Cluster: c.cluster, 
+		OperationResult: operation, 
+		Error: err,
 	}
 }
