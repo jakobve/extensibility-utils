@@ -10,10 +10,11 @@ import (
 	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
-	"github.com/openmcp-project/extensibility-utils/pkg/objectmanager"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openmcp-project/extensibility-utils/pkg/objectmanager"
 )
 
 // ResourceVersion describes the version information required for a Flux-managed chart.
@@ -34,11 +35,10 @@ type resourceVersion struct {
 // NewResourceVersion creates a ResourceVersion for callers without a CRD-backed version type.
 func NewResourceVersion(chartVersion, chartURL, chartPullSecret string, helmValues *apiextensionsv1.JSON) ResourceVersion {
 	return resourceVersion{
-		chartVersion: chartVersion, 
-		chartURL: chartURL, 
-		chartPullSecret: 
-		chartPullSecret, 
-		helmValues: helmValues,
+		chartVersion:    chartVersion,
+		chartURL:        chartURL,
+		chartPullSecret: chartPullSecret,
+		helmValues:      helmValues,
 	}
 }
 
@@ -100,7 +100,7 @@ func validateConfig(config ResourceConfig) error {
 func newOCIRepository(config ResourceConfig) objectmanager.Object {
 	return objectmanager.NewObject(&sourcev1.OCIRepository{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: config.OCIRepositoryName, 
+			Name:      config.OCIRepositoryName,
 			Namespace: config.Cluster.GetDefaultNamespace(),
 		},
 	}, objectmanager.ObjectConfig{
@@ -110,11 +110,11 @@ func newOCIRepository(config ResourceConfig) objectmanager.Object {
 				return fmt.Errorf("expected *sourcev1.OCIRepository, got %T", object)
 			}
 			spec := sourcev1.OCIRepositorySpec{
-				Interval:      metav1.Duration{Duration: config.Interval},
-				URL:           config.Version.GetChartURL(),
-				Reference:     &sourcev1.OCIRepositoryRef{Tag: config.Version.GetChartVersion()},
+				Interval:  metav1.Duration{Duration: config.Interval},
+				URL:       config.Version.GetChartURL(),
+				Reference: &sourcev1.OCIRepositoryRef{Tag: config.Version.GetChartVersion()},
 				LayerSelector: &sourcev1.OCILayerSelector{
-					MediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip", 
+					MediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
 					Operation: "extract",
 				},
 			}
@@ -124,15 +124,15 @@ func newOCIRepository(config ResourceConfig) objectmanager.Object {
 			ociRepository.Spec = spec
 			return nil
 		},
-		DeletionPolicy: objectmanager.Delete, 
-		StatusFunc: Status,
+		DeletionPolicy: objectmanager.Delete,
+		StatusFunc:     Status,
 	})
 }
 
 func newHelmRelease(config ResourceConfig, dependencies []objectmanager.Object) objectmanager.Object {
 	return objectmanager.NewObject(&helmv2.HelmRelease{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: config.HelmReleaseName, 
+			Name:      config.HelmReleaseName,
 			Namespace: config.Cluster.GetDefaultNamespace(),
 		},
 	}, objectmanager.ObjectConfig{
@@ -148,9 +148,9 @@ func newHelmRelease(config ResourceConfig, dependencies []objectmanager.Object) 
 					Name:      config.OCIRepositoryName,
 					Namespace: config.Cluster.GetDefaultNamespace(),
 				},
-				KubeConfig:       config.KubeConfig,
-				Install:          &helmv2.Install{
-					Remediation: &helmv2.InstallRemediation{Retries: 3}, 
+				KubeConfig: config.KubeConfig,
+				Install: &helmv2.Install{
+					Remediation:     &helmv2.InstallRemediation{Retries: 3},
 					CreateNamespace: true,
 				},
 				Upgrade:          &helmv2.Upgrade{Remediation: &helmv2.UpgradeRemediation{Retries: 3}},
@@ -161,9 +161,9 @@ func newHelmRelease(config ResourceConfig, dependencies []objectmanager.Object) 
 			}
 			return nil
 		},
-		DependsOn: dependencies, 
-		DeletionPolicy: objectmanager.Delete, 
-		StatusFunc: Status,
+		DependsOn:      dependencies,
+		DeletionPolicy: objectmanager.Delete,
+		StatusFunc:     Status,
 	})
 }
 

@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/openmcp-project/extensibility-utils/pkg/internal"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/openmcp-project/extensibility-utils/pkg/internal"
 )
 
 // ErrCleanup indicates that a cleaner could not list its target objects.
@@ -78,16 +79,16 @@ func (c *cleaner[T]) Cleanup(ctx context.Context) ([]Result, error) {
 func (c *cleaner[T]) result(object client.Object, operation controllerutil.OperationResult, err error, phase, message string) Result {
 	return Result{
 		Object: NewObject(object, ObjectConfig{
-			DeletionPolicy: Delete, 
+			DeletionPolicy: Delete,
 			StatusFunc: func(client.Object) ManagedObjectStatus {
 				return ManagedObjectStatus{
-					Phase: phase, 
+					Phase:   phase,
 					Message: message,
 				}
 			},
 		}),
-		Cluster: c.cluster, 
-		OperationResult: operation, 
-		Error: err,
+		Cluster:         c.cluster,
+		OperationResult: operation,
+		Error:           err,
 	}
 }

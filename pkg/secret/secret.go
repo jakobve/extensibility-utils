@@ -7,10 +7,11 @@ import (
 
 	ctrlutils "github.com/openmcp-project/controller-utils/pkg/controller"
 	openmcpresources "github.com/openmcp-project/controller-utils/pkg/resources"
-	"github.com/openmcp-project/extensibility-utils/pkg/objectmanager"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openmcp-project/extensibility-utils/pkg/objectmanager"
 )
 
 // CopyConfig holds the configuration for copying a secret between clusters or namespaces.
@@ -30,7 +31,7 @@ func ManagePullSecret(targetCluster objectmanager.Cluster, config CopyConfig) {
 func createSecret(config CopyConfig) objectmanager.Object {
 	return objectmanager.NewObject(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: config.TargetName, 
+			Name:      config.TargetName,
 			Namespace: config.TargetNamespace,
 		},
 	}, objectmanager.ObjectConfig{
@@ -41,7 +42,7 @@ func createSecret(config CopyConfig) objectmanager.Object {
 			}
 			sourceSecret := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: config.SourceName, 
+					Name:      config.SourceName,
 					Namespace: config.SourceNamespace,
 				},
 			}
@@ -62,11 +63,11 @@ func PrefixName(name, prefix string) (string, error) {
 // NewCleaner removes managed pull secrets not included in secretsToKeep.
 func NewCleaner(cluster objectmanager.Cluster, serviceProvider, namespace string, secretsToKeep []corev1.LocalObjectReference) objectmanager.Cleaner {
 	return objectmanager.NewCleaner(
-		cluster, 
-		serviceProvider, 
-		namespace, 
+		cluster,
+		serviceProvider,
+		namespace,
 		objectmanager.CleanerConfig[*corev1.SecretList]{
 			ObjectsToKeep: secretsToKeep,
 			EmptyList:     func() *corev1.SecretList { return &corev1.SecretList{} },
-	})
+		})
 }

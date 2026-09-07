@@ -18,9 +18,9 @@ func TestCleanerDeletesUnwantedManagedObjects(t *testing.T) {
 	require.NoError(t, corev1.AddToScheme(scheme))
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "obsolete", 
-			Namespace: "default", 
-			Labels: map[string]string{"app.kubernetes.io/managed-by": "test"},
+			Name:      "obsolete",
+			Namespace: "default",
+			Labels:    map[string]string{"app.kubernetes.io/managed-by": "test"},
 		},
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()

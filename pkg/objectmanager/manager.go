@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/openmcp-project/extensibility-utils/pkg/internal"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/openmcp-project/extensibility-utils/pkg/internal"
 )
 
 const (
@@ -193,12 +194,12 @@ func resultsToManagedObjects(ctx context.Context, results []Result) ([]ManagedOb
 			logger.Error(err, "cannot determine GVK for managed object", "objectID", internal.ObjectID(clientObject))
 		}
 		managedObjects = append(managedObjects, ManagedObject{
-			APIGroup: apiGroup, 
-			Kind: kind, 
-			Name: clientObject.GetName(), 
+			APIGroup:  apiGroup,
+			Kind:      kind,
+			Name:      clientObject.GetName(),
 			Namespace: clientObject.GetNamespace(),
-			Location: string(result.Cluster.GetClusterType()), 
-			Status: result.Object.GetStatus(),
+			Location:  string(result.Cluster.GetClusterType()),
+			Status:    result.Object.GetStatus(),
 		})
 		if result.Error != nil {
 			logger.Error(result.Error, "reconcile error", "objectID", internal.ObjectID(clientObject))

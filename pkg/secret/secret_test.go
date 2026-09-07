@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openmcp-project/extensibility-utils/pkg/objectmanager"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -15,6 +14,8 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/openmcp-project/extensibility-utils/pkg/objectmanager"
 )
 
 const (
