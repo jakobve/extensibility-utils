@@ -18,11 +18,14 @@ const (
 	OperationResultDeletionFailed    controllerutil.OperationResult = "deletionFailed"
 	OperationResultDeletionRequested controllerutil.OperationResult = "deletionRequested"
 	OperationResultDeleted           controllerutil.OperationResult = "deleted"
-	OperationResultOrphaned          controllerutil.OperationResult = "oprhaned"
+	OperationResultOrphaned          controllerutil.OperationResult = "orphaned"
 )
 
-// ErrManagedObjectsFailed is returned when one or more objects fail reconciliation.
-var ErrManagedObjectsFailed = errors.New("managed objects contain reconcile errors")
+// ErrReconcileManagedObjects indicates that one or more managed objects returned an error.
+var ErrReconcileManagedObjects = errors.New("managed objects contain reconcile errors")
+
+// ErrManagedObjectsFailed is kept for compatibility with earlier callers.
+var ErrManagedObjectsFailed = ErrReconcileManagedObjects
 
 type dependents map[Object][]dependency
 
@@ -30,8 +33,8 @@ type dependents map[Object][]dependency
 type Manager interface {
 	AddCluster(Cluster)
 	AddCleaner(Cleaner)
-	Apply(context.Context) (objects []ManagedObject, done bool, err error)
-	Delete(context.Context) (objects []ManagedObject, done bool, err error)
+	Apply(context.Context) ReconcileResult
+	Delete(context.Context) ReconcileResult
 }
 
 type manager struct {
@@ -49,28 +52,27 @@ func (m *manager) AddCluster(cluster Cluster) { m.clusters = append(m.clusters, 
 
 func (m *manager) AddCleaner(cleaner Cleaner) { m.cleaners = append(m.cleaners, cleaner) }
 
-func (m *manager) Apply(ctx context.Context) ([]ManagedObject, bool, error) {
+func (m *manager) Apply(ctx context.Context) ReconcileResult {
 	results, err := m.reconcileObjects(ctx, false)
-	if err != nil {
-		return nil, false, err
-	}
-	managedObjects, errs := resultsToManagedObjects(ctx, results)
-	if len(errs) > 0 {
-		return managedObjects, false, fmt.Errorf("%w: %w", ErrManagedObjectsFailed, errors.Join(errs...))
-	}
-	return managedObjects, allObjectsReady(results), nil
+	return m.reconcileResultFromResults(ctx, results, allObjectsReady(results), err)
 }
 
-func (m *manager) Delete(ctx context.Context) ([]ManagedObject, bool, error) {
+func (m *manager) Delete(ctx context.Context) ReconcileResult {
 	results, err := m.reconcileObjects(ctx, true)
+	return m.reconcileResultFromResults(ctx, results, allDeleted(results), err)
+}
+
+func (m *manager) reconcileResultFromResults(ctx context.Context, results []Result, done bool, err error) ReconcileResult {
+	managedObjects, hadObjectErrors := resultsToManagedObjectResults(ctx, results)
+	reconcileResult := ReconcileResult{Objects: managedObjects, Done: done}
 	if err != nil {
-		return nil, false, err
+		reconcileResult.Err = err
+		return reconcileResult
 	}
-	managedObjects, errs := resultsToManagedObjects(ctx, results)
-	if len(errs) > 0 {
-		return managedObjects, false, fmt.Errorf("%w: %w", ErrManagedObjectsFailed, errors.Join(errs...))
+	if hadObjectErrors {
+		reconcileResult.Err = ErrReconcileManagedObjects
 	}
-	return managedObjects, allDeleted(results), nil
+	return reconcileResult
 }
 
 func (m *manager) reconcileObjects(ctx context.Context, deleting bool) ([]Result, error) {
@@ -179,10 +181,10 @@ func allObjectsReady(results []Result) bool {
 	return true
 }
 
-func resultsToManagedObjects(ctx context.Context, results []Result) ([]ManagedObject, []error) {
+func resultsToManagedObjectResults(ctx context.Context, results []Result) ([]ManagedObjectResult, bool) {
 	logger := log.FromContext(ctx)
-	managedObjects := make([]ManagedObject, 0, len(results))
-	var errs []error
+	managedObjects := make([]ManagedObjectResult, 0, len(results))
+	hadObjectErrors := false
 	for _, result := range results {
 		clientObject := result.Object.GetObject()
 		apiGroup := ""
@@ -193,18 +195,22 @@ func resultsToManagedObjects(ctx context.Context, results []Result) ([]ManagedOb
 		} else {
 			logger.Error(err, "cannot determine GVK for managed object", "objectID", internal.ObjectID(clientObject))
 		}
-		managedObjects = append(managedObjects, ManagedObject{
-			APIGroup:  apiGroup,
-			Kind:      kind,
-			Name:      clientObject.GetName(),
-			Namespace: clientObject.GetNamespace(),
-			Location:  string(result.Cluster.GetClusterType()),
-			Status:    result.Object.GetStatus(),
+		managedObjects = append(managedObjects, ManagedObjectResult{
+			ManagedObject: ManagedObject{
+				APIGroup:  apiGroup,
+				Kind:      kind,
+				Name:      clientObject.GetName(),
+				Namespace: clientObject.GetNamespace(),
+				Location:  string(result.Cluster.GetClusterType()),
+				Status:    result.Object.GetStatus(),
+			},
+			OperationResult: result.OperationResult,
+			Err:             result.Error,
 		})
 		if result.Error != nil {
 			logger.Error(result.Error, "reconcile error", "objectID", internal.ObjectID(clientObject))
-			errs = append(errs, result.Error)
+			hadObjectErrors = true
 		}
 	}
-	return managedObjects, errs
+	return managedObjects, hadObjectErrors
 }

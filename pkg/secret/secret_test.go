@@ -89,15 +89,17 @@ func TestManagePullSecret(t *testing.T) {
 
 			mgr := objectmanager.NewManager("test")
 			mgr.AddCluster(cluster)
-			_, _, err := mgr.Apply(context.Background())
+			result := mgr.Apply(context.Background())
 
 			if tt.wantErr {
-				require.Error(t, err)
-				assert.ErrorIs(t, err, objectmanager.ErrManagedObjectsFailed)
+					require.Error(t, result.Err)
+					assert.ErrorIs(t, result.Err, objectmanager.ErrReconcileManagedObjects)
+					require.Len(t, result.Objects, 1)
+					assert.Error(t, result.Objects[0].Err)
 				return
 			}
 
-			require.NoError(t, err)
+			require.NoError(t, result.Err)
 
 			target := &corev1.Secret{}
 			require.NoError(t, fakeClient.Get(context.Background(), client.ObjectKey{Name: tt.config.TargetName, Namespace: tt.config.TargetNamespace}, target))
