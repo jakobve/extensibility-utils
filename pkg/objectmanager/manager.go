@@ -18,11 +18,11 @@ const (
 	OperationResultDeletionFailed    controllerutil.OperationResult = "deletionFailed"
 	OperationResultDeletionRequested controllerutil.OperationResult = "deletionRequested"
 	OperationResultDeleted           controllerutil.OperationResult = "deleted"
-	OperationResultOrphaned          controllerutil.OperationResult = OperationResultDeleted
+	OperationResultOrphaned          controllerutil.OperationResult = "oprhaned"
 )
 
 // ErrManagedObjectsFailed is returned when one or more objects fail reconciliation.
-var ErrManagedObjectsFailed = errors.New("one or more managed objects failed")
+var ErrManagedObjectsFailed = errors.New("managed objects contain reconcile errors")
 
 type dependents map[Object][]dependency
 

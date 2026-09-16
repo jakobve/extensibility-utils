@@ -51,7 +51,10 @@ func (c *cleaner[T]) Cleanup(ctx context.Context) ([]Result, error) {
 		log.FromContext(ctx).Error(err, "failed to list objects for cleanup")
 		return nil, fmt.Errorf("%w: %w", ErrCleanup, err)
 	}
-	items, _ := meta.ExtractList(list)
+	items, err := meta.ExtractList(list)
+	if err != nil {
+		return nil, fmt.Errorf("cleaner config does not have a proper list type: %w", err)
+	}
 	results := []Result{}
 	for _, item := range items {
 		object, ok := item.(client.Object)

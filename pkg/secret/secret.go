@@ -23,9 +23,32 @@ type CopyConfig struct {
 	TargetName      string
 }
 
+func validateConfig(config CopyConfig) error {
+	if config.SourceClient == nil {
+		return fmt.Errorf("CopyConfig.SourceClient must not be nil")
+	}
+	if config.SourceName == "" {
+		return fmt.Errorf("CopyConfig.SourceName must not be empty")
+	}
+	if config.SourceNamespace == "" {
+		return fmt.Errorf("CopyConfig.SourceNamespace must not be empty")
+	}
+	if config.TargetNamespace == "" {
+		return fmt.Errorf("CopyConfig.TargetNamespace must not be empty")
+	}
+	if config.TargetName == "" {
+		return fmt.Errorf("CopyConfig.TargetName must not be empty")
+	}
+	return nil
+}
+
 // ManagePullSecret registers an image-pull secret copy on a target cluster.
-func ManagePullSecret(targetCluster objectmanager.Cluster, config CopyConfig) {
+func ManagePullSecret(targetCluster objectmanager.Cluster, config CopyConfig) error {
+	if err := validateConfig(config); err != nil {
+		return err
+	}
 	targetCluster.AddObject(createSecret(config))
+	return nil
 }
 
 func createSecret(config CopyConfig) objectmanager.Object {
