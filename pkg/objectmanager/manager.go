@@ -63,8 +63,8 @@ func (m *manager) Delete(ctx context.Context) ReconcileResult {
 }
 
 func (m *manager) reconcileResultFromResults(ctx context.Context, results []Result, done bool, err error) ReconcileResult {
-	managedObjects, hadObjectErrors := resultsToManagedObjectResults(ctx, results)
-	reconcileResult := ReconcileResult{Objects: managedObjects, Done: done}
+	managedObjectResults, hadObjectErrors := resultsToManagedObjectResults(ctx, results)
+	reconcileResult := ReconcileResult{ManagedObjectResults: managedObjectResults, Done: done}
 	if err != nil {
 		reconcileResult.Err = err
 		return reconcileResult
@@ -183,7 +183,7 @@ func allObjectsReady(results []Result) bool {
 
 func resultsToManagedObjectResults(ctx context.Context, results []Result) ([]ManagedObjectResult, bool) {
 	logger := log.FromContext(ctx)
-	managedObjects := make([]ManagedObjectResult, 0, len(results))
+	managedObjectResults := make([]ManagedObjectResult, 0, len(results))
 	hadObjectErrors := false
 	for _, result := range results {
 		clientObject := result.Object.GetObject()
@@ -195,7 +195,7 @@ func resultsToManagedObjectResults(ctx context.Context, results []Result) ([]Man
 		} else {
 			logger.Error(err, "cannot determine GVK for managed object", "objectID", internal.ObjectID(clientObject))
 		}
-		managedObjects = append(managedObjects, ManagedObjectResult{
+		managedObjectResults = append(managedObjectResults, ManagedObjectResult{
 			ManagedObject: ManagedObject{
 				APIGroup:  apiGroup,
 				Kind:      kind,
@@ -212,5 +212,5 @@ func resultsToManagedObjectResults(ctx context.Context, results []Result) ([]Man
 			hadObjectErrors = true
 		}
 	}
-	return managedObjects, hadObjectErrors
+	return managedObjectResults, hadObjectErrors
 }

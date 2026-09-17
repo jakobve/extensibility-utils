@@ -92,10 +92,10 @@ func TestManagePullSecret(t *testing.T) {
 			result := mgr.Apply(context.Background())
 
 			if tt.wantErr {
-					require.Error(t, result.Err)
-					assert.ErrorIs(t, result.Err, objectmanager.ErrReconcileManagedObjects)
-					require.Len(t, result.Objects, 1)
-					assert.Error(t, result.Objects[0].Err)
+				require.Error(t, result.Err)
+				assert.ErrorIs(t, result.Err, objectmanager.ErrReconcileManagedObjects)
+				require.Len(t, result.ManagedObjectResults, 1)
+				assert.Error(t, result.ManagedObjectResults[0].Err)
 				return
 			}
 

@@ -11,8 +11,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 func testCluster(t *testing.T, objects ...runtime.Object) Cluster {
@@ -31,17 +31,17 @@ func TestManagerApplyAndDelete(t *testing.T) {
 	applyResult := manager.Apply(context.Background())
 	require.NoError(t, applyResult.Err)
 	assert.False(t, applyResult.Done)
-	require.Len(t, applyResult.Objects, 1)
-	assert.Equal(t, "Secret", applyResult.Objects[0].Kind)
-	assert.Equal(t, "managed", applyResult.Objects[0].Name)
-	assert.Equal(t, string(PlatformCluster), applyResult.Objects[0].Location)
-	assert.Equal(t, controllerutil.OperationResultCreated, applyResult.Objects[0].OperationResult)
+	require.Len(t, applyResult.ManagedObjectResults, 1)
+	assert.Equal(t, "Secret", applyResult.ManagedObjectResults[0].ManagedObject.Kind)
+	assert.Equal(t, "managed", applyResult.ManagedObjectResults[0].ManagedObject.Name)
+	assert.Equal(t, string(PlatformCluster), applyResult.ManagedObjectResults[0].ManagedObject.Location)
+	assert.Equal(t, controllerutil.OperationResultCreated, applyResult.ManagedObjectResults[0].OperationResult)
 
 	deleteResult := manager.Delete(context.Background())
 	require.NoError(t, deleteResult.Err)
 	assert.False(t, deleteResult.Done)
-	require.Len(t, deleteResult.Objects, 1)
-	assert.Equal(t, OperationResultDeletionRequested, deleteResult.Objects[0].OperationResult)
+	require.Len(t, deleteResult.ManagedObjectResults, 1)
+	assert.Equal(t, OperationResultDeletionRequested, deleteResult.ManagedObjectResults[0].OperationResult)
 
 	deleteResult = manager.Delete(context.Background())
 	require.NoError(t, deleteResult.Err)
@@ -56,7 +56,7 @@ func TestManagedObjectJSON(t *testing.T) {
 
 func TestReconcileResultManagedObjectHelpers(t *testing.T) {
 	reconcileResult := ReconcileResult{
-		Objects: []ManagedObjectResult{
+		ManagedObjectResults: []ManagedObjectResult{
 			{
 				ManagedObject: ManagedObject{Name: "ready", Kind: "Secret"},
 			},
