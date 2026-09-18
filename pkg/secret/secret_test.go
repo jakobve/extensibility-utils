@@ -85,21 +85,22 @@ func TestManagePullSecret(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cluster := objectmanager.NewCluster(fakeClient, sourceNamespace, objectmanager.PlatformCluster)
-			ManagePullSecret(cluster, tt.config)
+			err := ManagePullSecret(cluster, tt.config)
+			require.NoError(t, err)
 
 			mgr := objectmanager.NewManager("test")
 			mgr.AddCluster(cluster)
-			result := mgr.Apply(context.Background())
+			result, err := mgr.Apply(context.Background())
 
 			if tt.wantErr {
-				require.Error(t, result.Err)
-				assert.ErrorIs(t, result.Err, objectmanager.ErrReconcileManagedObjects)
-				require.Len(t, result.ManagedObjectResults, 1)
-				assert.Error(t, result.ManagedObjectResults[0].Err)
+				require.Error(t, err)
+				assert.ErrorIs(t, err, objectmanager.ErrReconcileManagedObjects)
+				require.Len(t, result.Results, 1)
+				assert.Error(t, result.Results[0].Error)
 				return
 			}
 
-			require.NoError(t, result.Err)
+			require.NoError(t, err)
 
 			target := &corev1.Secret{}
 			require.NoError(t, fakeClient.Get(context.Background(), client.ObjectKey{Name: tt.config.TargetName, Namespace: tt.config.TargetNamespace}, target))

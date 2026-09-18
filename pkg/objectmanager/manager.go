@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,17 +23,41 @@ const (
 // ErrReconcileManagedObjects indicates that one or more managed objects returned an error.
 var ErrReconcileManagedObjects = errors.New("managed objects contain reconcile errors")
 
-// ErrManagedObjectsFailed is kept for compatibility with earlier callers.
-var ErrManagedObjectsFailed = ErrReconcileManagedObjects
-
 type dependents map[Object][]dependency
 
 // Manager reconciles objects across one or more clusters.
 type Manager interface {
 	AddCluster(Cluster)
 	AddCleaner(Cleaner)
-	Apply(context.Context) ReconcileResult
-	Delete(context.Context) ReconcileResult
+	Apply(context.Context) (ReconcileResult, error)
+	Delete(context.Context) (ReconcileResult, error)
+}
+
+// ReconcileResult is the consolidated return value for Apply and Delete.
+type ReconcileResult struct {
+	Results []Result
+	// Requeue indicates
+	// - on Apply: at least one object reports status phase != ready
+	// - on Delete: at least one object remains that is not deleted/orphaned
+	Requeue bool
+}
+
+func (rr ReconcileResult) ManagedObjects() []ManagedObject {
+	managedObjects := make([]ManagedObject, 0, len(rr.Results))
+	for _, result := range rr.Results {
+		obj := result.Object.GetObject()
+		gvk, _ := result.Cluster.GetClient().GroupVersionKindFor(obj)
+		managedObjects = append(managedObjects, ManagedObject{
+			APIGroup:  gvk.Group,
+			Kind:      gvk.Kind,
+			Name:      obj.GetName(),
+			Namespace: obj.GetNamespace(),
+			Location:  string(result.Cluster.GetClusterType()),
+			Status:    result.Object.GetStatus(),
+		},
+		)
+	}
+	return managedObjects
 }
 
 type manager struct {
@@ -52,27 +75,22 @@ func (m *manager) AddCluster(cluster Cluster) { m.clusters = append(m.clusters, 
 
 func (m *manager) AddCleaner(cleaner Cleaner) { m.cleaners = append(m.cleaners, cleaner) }
 
-func (m *manager) Apply(ctx context.Context) ReconcileResult {
+func (m *manager) Apply(ctx context.Context) (ReconcileResult, error) {
 	results, err := m.reconcileObjects(ctx, false)
-	return m.reconcileResultFromResults(ctx, results, allObjectsReady(results), err)
+	allReady, objectsError := allObjectsReady(results)
+	return ReconcileResult{
+		Results: results,
+		Requeue: !allReady,
+	}, errors.Join(err, objectsError)
 }
 
-func (m *manager) Delete(ctx context.Context) ReconcileResult {
+func (m *manager) Delete(ctx context.Context) (ReconcileResult, error) {
 	results, err := m.reconcileObjects(ctx, true)
-	return m.reconcileResultFromResults(ctx, results, allDeleted(results), err)
-}
-
-func (m *manager) reconcileResultFromResults(ctx context.Context, results []Result, done bool, err error) ReconcileResult {
-	managedObjectResults, hadObjectErrors := resultsToManagedObjectResults(ctx, results)
-	reconcileResult := ReconcileResult{ManagedObjectResults: managedObjectResults, Done: done}
-	if err != nil {
-		reconcileResult.Err = err
-		return reconcileResult
-	}
-	if hadObjectErrors {
-		reconcileResult.Err = ErrReconcileManagedObjects
-	}
-	return reconcileResult
+	allDeleted, objectsError := allObjectsDeleted(results)
+	return ReconcileResult{
+		Results: results,
+		Requeue: !allDeleted,
+	}, errors.Join(err, objectsError)
 }
 
 func (m *manager) reconcileObjects(ctx context.Context, deleting bool) ([]Result, error) {
@@ -163,54 +181,28 @@ type dependency struct {
 	Cluster Cluster
 }
 
-func allDeleted(results []Result) bool {
+// allObjects returns whether all results satisfy eval, and an error if any result contains one.
+func allObjects(results []Result, eval func(r Result) bool) (bool, error) {
+	allObj := true
 	for _, result := range results {
-		if result.OperationResult != OperationResultDeleted && result.OperationResult != OperationResultOrphaned {
-			return false
+		if !eval(result) {
+			allObj = false
 		}
-	}
-	return true
-}
-
-func allObjectsReady(results []Result) bool {
-	for _, result := range results {
-		if result.Object.GetStatus().Phase != StatusPhaseReady {
-			return false
-		}
-	}
-	return true
-}
-
-func resultsToManagedObjectResults(ctx context.Context, results []Result) ([]ManagedObjectResult, bool) {
-	logger := log.FromContext(ctx)
-	managedObjectResults := make([]ManagedObjectResult, 0, len(results))
-	hadObjectErrors := false
-	for _, result := range results {
-		clientObject := result.Object.GetObject()
-		apiGroup := ""
-		kind := reflect.TypeOf(clientObject).Elem().Name()
-		if gvk, err := result.Cluster.GetClient().GroupVersionKindFor(clientObject); err == nil {
-			apiGroup = gvk.Group
-			kind = gvk.Kind
-		} else {
-			logger.Error(err, "cannot determine GVK for managed object", "objectID", internal.ObjectID(clientObject))
-		}
-		managedObjectResults = append(managedObjectResults, ManagedObjectResult{
-			ManagedObject: ManagedObject{
-				APIGroup:  apiGroup,
-				Kind:      kind,
-				Name:      clientObject.GetName(),
-				Namespace: clientObject.GetNamespace(),
-				Location:  string(result.Cluster.GetClusterType()),
-				Status:    result.Object.GetStatus(),
-			},
-			OperationResult: result.OperationResult,
-			Err:             result.Error,
-		})
 		if result.Error != nil {
-			logger.Error(result.Error, "reconcile error", "objectID", internal.ObjectID(clientObject))
-			hadObjectErrors = true
+			return false, ErrReconcileManagedObjects
 		}
 	}
-	return managedObjectResults, hadObjectErrors
+	return allObj, nil
+}
+
+func allObjectsDeleted(results []Result) (bool, error) {
+	return allObjects(results, func(r Result) bool {
+		return r.OperationResult == OperationResultDeleted || r.OperationResult == OperationResultOrphaned
+	})
+}
+
+func allObjectsReady(results []Result) (bool, error) {
+	return allObjects(results, func(r Result) bool {
+		return r.Object.GetStatus().Phase == StatusPhaseReady
+	})
 }

@@ -28,60 +28,31 @@ func TestManagerApplyAndDelete(t *testing.T) {
 	manager := NewManager("test")
 	manager.AddCluster(cluster)
 
-	applyResult := manager.Apply(context.Background())
-	require.NoError(t, applyResult.Err)
-	assert.False(t, applyResult.Done)
-	require.Len(t, applyResult.ManagedObjectResults, 1)
-	assert.Equal(t, "Secret", applyResult.ManagedObjectResults[0].ManagedObject.Kind)
-	assert.Equal(t, "managed", applyResult.ManagedObjectResults[0].ManagedObject.Name)
-	assert.Equal(t, string(PlatformCluster), applyResult.ManagedObjectResults[0].ManagedObject.Location)
-	assert.Equal(t, controllerutil.OperationResultCreated, applyResult.ManagedObjectResults[0].OperationResult)
+	applyResult, err := manager.Apply(context.Background())
+	require.NoError(t, err)
+	assert.True(t, applyResult.Requeue)
+	require.Len(t, applyResult.Results, 1)
+	managedObjects := applyResult.ManagedObjects()
+	require.Len(t, managedObjects, 1)
+	managedObj := managedObjects[0]
+	assert.Equal(t, "Secret", managedObj.Kind)
+	assert.Equal(t, "managed", managedObj.Name)
+	assert.Equal(t, string(PlatformCluster), managedObj.Location)
+	assert.Equal(t, controllerutil.OperationResultCreated, applyResult.Results[0].OperationResult)
 
-	deleteResult := manager.Delete(context.Background())
-	require.NoError(t, deleteResult.Err)
-	assert.False(t, deleteResult.Done)
-	require.Len(t, deleteResult.ManagedObjectResults, 1)
-	assert.Equal(t, OperationResultDeletionRequested, deleteResult.ManagedObjectResults[0].OperationResult)
+	deleteResult, err := manager.Delete(context.Background())
+	require.NoError(t, err)
+	assert.True(t, deleteResult.Requeue)
+	require.Len(t, deleteResult.Results, 1)
+	assert.Equal(t, OperationResultDeletionRequested, deleteResult.Results[0].OperationResult)
 
-	deleteResult = manager.Delete(context.Background())
-	require.NoError(t, deleteResult.Err)
-	assert.True(t, deleteResult.Done)
+	deleteResult, err = manager.Delete(context.Background())
+	require.NoError(t, err)
+	assert.False(t, deleteResult.Requeue)
 }
 
 func TestManagedObjectJSON(t *testing.T) {
 	encoded, err := json.Marshal(ManagedObject{APIGroup: "apps", Kind: "Deployment", Name: "app", Status: ManagedObjectStatus{Phase: StatusPhaseReady}})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"apiGroup":"apps","kind":"Deployment","name":"app","status":{"phase":"Ready"}}`, string(encoded))
-}
-
-func TestReconcileResultManagedObjectHelpers(t *testing.T) {
-	reconcileResult := ReconcileResult{
-		ManagedObjectResults: []ManagedObjectResult{
-			{
-				ManagedObject: ManagedObject{Name: "ready", Kind: "Secret"},
-			},
-			{
-				ManagedObject: ManagedObject{Name: "failed", Kind: "ConfigMap"},
-				Err:           assert.AnError,
-			},
-		},
-	}
-
-	assert.Equal(t, []ManagedObject{
-		{Name: "ready", Kind: "Secret"},
-		{Name: "failed", Kind: "ConfigMap"},
-	}, reconcileResult.GetAllManagedObjects())
-
-	assert.Equal(t, []ManagedObjectResult{
-		{
-			ManagedObject: ManagedObject{Name: "failed", Kind: "ConfigMap"},
-			Err:           assert.AnError,
-		},
-	}, reconcileResult.GetFailedManagedObjectResults())
-
-	assert.Equal(t, []ManagedObjectResult{
-		{
-			ManagedObject: ManagedObject{Name: "ready", Kind: "Secret"},
-		},
-	}, reconcileResult.GetSucceededManagedObjectResults())
 }

@@ -49,9 +49,9 @@ func TestManageResources(t *testing.T) {
 
 	mgr := objectmanager.NewManager("test")
 	mgr.AddCluster(config.Cluster)
-	result := mgr.Apply(context.Background())
-	require.NoError(t, result.Err)
-	assert.False(t, result.Done, "Flux resources are not yet Ready (no ReadyCondition set by fake client)")
+	result, err := mgr.Apply(context.Background())
+	require.NoError(t, err)
+	assert.True(t, result.Requeue, "Flux resources are not yet Ready (no ReadyCondition set by fake client)")
 
 	ociRepo := &sourcev1.OCIRepository{}
 	require.NoError(t, config.Cluster.GetClient().Get(context.Background(), client.ObjectKey{Name: "chart", Namespace: "flux-system"}, ociRepo))
@@ -88,8 +88,8 @@ func TestManageResources_NoPullSecret(t *testing.T) {
 
 	mgr := objectmanager.NewManager("test")
 	mgr.AddCluster(config.Cluster)
-	result := mgr.Apply(context.Background())
-	require.NoError(t, result.Err)
+	_, err := mgr.Apply(context.Background())
+	require.NoError(t, err)
 
 	ociRepo := &sourcev1.OCIRepository{}
 	require.NoError(t, config.Cluster.GetClient().Get(context.Background(), client.ObjectKey{Name: "chart", Namespace: "flux-system"}, ociRepo))

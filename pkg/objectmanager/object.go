@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // DeletionPolicy distinguishes between deleting and orphaning an object.
@@ -106,20 +105,6 @@ type ManagedObject struct {
 	Status    ManagedObjectStatus `json:"status,omitempty"`
 }
 
-// ManagedObjectResult combines the rendered object payload with the reconcile outcome.
-type ManagedObjectResult struct {
-	ManagedObject   ManagedObject
-	OperationResult controllerutil.OperationResult
-	Err             error
-}
-
-// ReconcileResult is the consolidated return value for Apply and Delete.
-type ReconcileResult struct {
-	ManagedObjectResults []ManagedObjectResult
-	Done                 bool
-	Err                  error
-}
-
 // SimpleStatus reports whether an object is terminating, pending, or present.
 func SimpleStatus(object client.Object) ManagedObjectStatus {
 	if !object.GetDeletionTimestamp().IsZero() {
@@ -129,32 +114,4 @@ func SimpleStatus(object client.Object) ManagedObjectStatus {
 		return ManagedObjectStatus{Phase: StatusPhaseProgressing, Message: "Resource has not been created yet."}
 	}
 	return ManagedObjectStatus{Phase: StatusPhaseReady, Message: "Resource exists."}
-}
-
-func (r *ReconcileResult) GetAllManagedObjects() []ManagedObject {
-	managedObjects := make([]ManagedObject, 0, len(r.ManagedObjectResults))
-	for _, objectResult := range r.ManagedObjectResults {
-		managedObjects = append(managedObjects, objectResult.ManagedObject)
-	}
-	return managedObjects
-}
-
-func (r *ReconcileResult) GetFailedManagedObjectResults() []ManagedObjectResult {
-	managedObjectResults := make([]ManagedObjectResult, 0, len(r.ManagedObjectResults))
-	for _, objectResult := range r.ManagedObjectResults {
-		if objectResult.Err != nil {
-			managedObjectResults = append(managedObjectResults, objectResult)
-		}
-	}
-	return managedObjectResults
-}
-
-func (r *ReconcileResult) GetSucceededManagedObjectResults() []ManagedObjectResult {
-	managedObjectResults := make([]ManagedObjectResult, 0, len(r.ManagedObjectResults))
-	for _, objectResult := range r.ManagedObjectResults {
-		if objectResult.Err == nil {
-			managedObjectResults = append(managedObjectResults, objectResult)
-		}
-	}
-	return managedObjectResults
 }
